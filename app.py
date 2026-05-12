@@ -37,8 +37,10 @@ try:
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
     print(f"[OK] Model berhasil dimuat dari: {MODEL_PATH}")
-except FileNotFoundError:
-    raise RuntimeError(f"Model tidak ditemukan di: {MODEL_PATH}")
+except Exception as e:
+    print(f"[ERROR] Gagal memuat model: {str(e)}")
+    # Jangan biarkan aplikasi crash diam-diam
+    model = None
 
 
 # ── Schema ─────────────────────────────────────────────────────────────────

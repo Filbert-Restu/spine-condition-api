@@ -7,3 +7,4 @@ lightgbm==4.5.0
 catboost==1.2.7
 numpy==1.26.4
 pandas==2.2.2
+joblib==1.4.2
