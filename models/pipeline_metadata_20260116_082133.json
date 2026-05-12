@@ -1,0 +1,116 @@
+{
+  "timestamp": "20260116_082133",
+  "models_per_label": {
+    "hyperkyphosis": {
+      "model_name": "Specialist_CatBoost",
+      "f1_score": 0.759493670886076,
+      "accuracy": 0.8347826086956521,
+      "features_used": [
+        "KI%",
+        "KI",
+        "FC%",
+        "FC",
+        "thorac",
+        "age",
+        "cerv",
+        "weight",
+        "height",
+        "sex",
+        "FL",
+        "FL%",
+        "BMI",
+        "distC7S1",
+        "age"
+      ]
+    },
+    "hyperlordosis": {
+      "model_name": "KNN",
+      "f1_score": 0.7973856209150327,
+      "accuracy": 0.8652173913043478,
+      "features_used": [
+        "FL%",
+        "FL",
+        "KI%",
+        "KI",
+        "FC%",
+        "FC",
+        "cerv",
+        "sex",
+        "lumb",
+        "age",
+        "BMI"
+      ]
+    },
+    "re_hyperkyphosis": {
+      "model_name": "AdaBoost",
+      "f1_score": 0.8902439024390244,
+      "accuracy": 0.9217391304347826,
+      "features_used": [
+        "KI%",
+        "KI",
+        "FC%",
+        "FC",
+        "thorac",
+        "age",
+        "cerv",
+        "weight",
+        "height",
+        "sex",
+        "FL",
+        "FL%",
+        "BMI",
+        "distC7S1",
+        "age"
+      ]
+    },
+    "re_hyperlordosis": {
+      "model_name": "Specialist_KNN",
+      "f1_score": 0.9101796407185628,
+      "accuracy": 0.9347826086956522,
+      "features_used": [
+        "FL%",
+        "FL",
+        "KI%",
+        "KI",
+        "FC%",
+        "FC",
+        "cerv",
+        "sex",
+        "lumb",
+        "age"
+      ]
+    }
+  },
+  "overall_metrics": {
+    "overall_accuracy": 0.6695652173913044,
+    "hamming_loss": 0.1108695652173913,
+    "average_f1": 0.839325708739674,
+    "average_accuracy": 0.8891304347826088
+  },
+  "per_label_metrics": {
+    "hyperkyphosis": {
+      "accuracy": 0.8347826086956521,
+      "f1_score": 0.759493670886076,
+      "precision": 0.8108108108108109,
+      "recall": 0.7142857142857143
+    },
+    "hyperlordosis": {
+      "accuracy": 0.8652173913043478,
+      "f1_score": 0.7973856209150327,
+      "precision": 0.8591549295774648,
+      "recall": 0.7439024390243902
+    },
+    "re_hyperkyphosis": {
+      "accuracy": 0.9217391304347826,
+      "f1_score": 0.8902439024390244,
+      "precision": 0.9240506329113924,
+      "recall": 0.8588235294117647
+    },
+    "re_hyperlordosis": {
+      "accuracy": 0.9347826086956522,
+      "f1_score": 0.9101796407185628,
+      "precision": 0.926829268292683,
+      "recall": 0.8941176470588236
+    }
+  }
+}
