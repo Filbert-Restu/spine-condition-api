@@ -3,9 +3,149 @@ import pickle
 import numpy as np
 import pandas as pd
 import uvicorn
+import logging
+import traceback
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
+from sklearn.metrics import f1_score, accuracy_score
+
+# ==============================================================================
+# CUSTOM CLASSES (Required for Pickle Deserialization)
+# ==============================================================================
+
+class SpinalSpecialistModel(BaseEstimator, ClassifierMixin):
+    def __init__(self, base_estimator, feature_map):
+        self.base_estimator = base_estimator
+        self.feature_map = feature_map
+        self.models_ = {} 
+        self.target_names_ = list(feature_map.keys())
+
+    def fit(self, X, y):
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X harus berupa Pandas DataFrame.")
+        
+        for target in self.target_names_:
+            required_features = self.feature_map[target]
+            X_subset_df = X[required_features]
+            y_subset_raw = y[target]
+            X_final = X_subset_df.values
+            y_final = np.array(y_subset_raw).ravel()
+            model = clone(self.base_estimator)
+            model.fit(X_final, y_final)
+            self.models_[target] = model
+        return self
+
+    def predict(self, X):
+        predictions = {}
+        for target in self.target_names_:
+            required_features = self.feature_map[target]
+            X_subset_df = X[required_features]
+            X_final = X_subset_df.values
+            predictions[target] = self.models_[target].predict(X_final)
+        return pd.DataFrame(predictions).values
+
+    def predict_proba(self, X):
+        probabilities = []
+        for target in self.target_names_:
+            required_features = self.feature_map[target]
+            X_subset_df = X[required_features]
+            X_final = X_subset_df.values
+            if hasattr(self.models_[target], "predict_proba"):
+                probabilities.append(self.models_[target].predict_proba(X_final))
+            else:
+                preds = self.models_[target].predict(X_final)
+                prob = np.zeros((len(preds), 2))
+                for i, p in enumerate(preds):
+                    prob[i, int(p)] = 1.0
+                probabilities.append(prob)
+        return probabilities
+
+class OptimizedSpinalPipeline(BaseEstimator, ClassifierMixin):
+    def __init__(self, label_models, target_names, feature_map, scaler=None):
+        self.label_models = label_models
+        self.target_names = target_names
+        self.feature_map = feature_map
+        self.scaler = scaler
+
+    def fit(self, X, y):
+        return self
+
+    def predict(self, X):
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X harus berupa Pandas DataFrame")
+        
+        if self.scaler is not None:
+            X_scaled = pd.DataFrame(
+                self.scaler.transform(X),
+                columns=X.columns,
+                index=X.index
+            )
+        else:
+            X_scaled = X.copy()
+            
+        predictions = {}
+        for label in self.target_names:
+            model_info = self.label_models[label]
+            model = model_info['model']
+            
+            if 'SpinalSpecialistModel' in model.__class__.__name__:
+                pred_full = model.predict(X_scaled)
+                label_idx = self.target_names.index(label)
+                predictions[label] = pred_full[:, label_idx]
+            else:
+                required_features = self.feature_map[label]
+                X_subset = X_scaled[required_features]
+                predictions[label] = model.predict(X_subset.values)
+        
+        result = np.column_stack([predictions[label] for label in self.target_names])
+        return result
+    
+    def predict_proba(self, X):
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X harus berupa Pandas DataFrame")
+        
+        if self.scaler is not None:
+            X_scaled = pd.DataFrame(
+                self.scaler.transform(X),
+                columns=X.columns,
+                index=X.index
+            )
+        else:
+            X_scaled = X.copy()
+        
+        probabilities = {}
+        for label in self.target_names:
+            model_info = self.label_models[label]
+            model = model_info['model']
+            
+            try:
+                if 'SpinalSpecialistModel' in model.__class__.__name__:
+                    proba_full = model.predict_proba(X_scaled)
+                    label_idx = self.target_names.index(label)
+                    probabilities[label] = proba_full[label_idx][:, 1]
+                else:
+                    required_features = self.feature_map[label]
+                    X_subset = X_scaled[required_features]
+                    proba = model.predict_proba(X_subset.values)
+                    probabilities[label] = proba[:, 1]
+            except AttributeError:
+                probabilities[label] = np.zeros(X.shape[0])
+        
+        return probabilities
+
+    def get_model_info(self):
+        info = {}
+        for label in self.target_names:
+            model_info = self.label_models[label]
+            info[label] = {
+                'model_name': model_info.get('model_name', str(model_info['model'].__class__.__name__)),
+                'f1_score': model_info.get('f1_score', 0),
+                'accuracy': model_info.get('accuracy', 0),
+                'features_used': self.feature_map.get(label, [])
+            }
+        return info
 
 # ── App Setup ──────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -30,16 +170,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # ── Load Model ─────────────────────────────────────────────────────────────
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "model.pkl")
+model = None
 
 try:
-    with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
-    print(f"[OK] Model berhasil dimuat dari: {MODEL_PATH}")
+    if os.path.exists(MODEL_PATH):
+        with open(MODEL_PATH, "rb") as f:
+            model = pickle.load(f)
+        logger.info(f"[OK] Model berhasil dimuat dari: {MODEL_PATH}")
+    else:
+        logger.error(f"[ERROR] File model tidak ditemukan: {MODEL_PATH}")
 except Exception as e:
-    print(f"[ERROR] Gagal memuat model: {str(e)}")
-    # Jangan biarkan aplikasi crash diam-diam
+    logger.error(f"[ERROR] Gagal memuat model: {str(e)}")
+    logger.error(traceback.format_exc())
     model = None
 
 
@@ -99,6 +247,12 @@ def predict(data: SpineInput):
 
     **Semua field wajib diisi.**
     """
+    if model is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="Model is not loaded. Check server logs for errors."
+        )
+
     try:
         # Buat DataFrame dengan nama kolom yang sama persis seperti saat training
         input_df = pd.DataFrame([{
