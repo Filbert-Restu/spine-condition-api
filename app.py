@@ -63,11 +63,16 @@ class SpinalSpecialistModel(BaseEstimator, ClassifierMixin):
         return probabilities
 
 class OptimizedSpinalPipeline(BaseEstimator, ClassifierMixin):
-    def __init__(self, label_models, target_names, feature_map, scaler=None):
+    """
+    Pipeline yang menggunakan model terbaik untuk setiap label.
+    Setiap label diprediksi oleh model yang memiliki performa terbaik untuk label tersebut.
+    """
+
+    def __init__(self, label_models, feature_map, scaler=None):
         self.label_models = label_models
-        self.target_names = target_names
         self.feature_map = feature_map
         self.scaler = scaler
+        self.target_names_ = list(label_models.keys())
 
     def fit(self, X, y):
         return self
@@ -75,7 +80,7 @@ class OptimizedSpinalPipeline(BaseEstimator, ClassifierMixin):
     def predict(self, X):
         if not isinstance(X, pd.DataFrame):
             raise ValueError("X harus berupa Pandas DataFrame")
-        
+
         if self.scaler is not None:
             X_scaled = pd.DataFrame(
                 self.scaler.transform(X),
@@ -84,28 +89,28 @@ class OptimizedSpinalPipeline(BaseEstimator, ClassifierMixin):
             )
         else:
             X_scaled = X.copy()
-            
+
         predictions = {}
-        for label in self.target_names:
+        for label in self.target_names_:
             model_info = self.label_models[label]
             model = model_info['model']
-            
+
             if 'SpinalSpecialistModel' in model.__class__.__name__:
                 pred_full = model.predict(X_scaled)
-                label_idx = self.target_names.index(label)
+                label_idx = self.target_names_.index(label)
                 predictions[label] = pred_full[:, label_idx]
             else:
                 required_features = self.feature_map[label]
                 X_subset = X_scaled[required_features]
                 predictions[label] = model.predict(X_subset.values)
-        
-        result = np.column_stack([predictions[label] for label in self.target_names])
+
+        result = np.column_stack([predictions[label] for label in self.target_names_])
         return result
-    
+
     def predict_proba(self, X):
         if not isinstance(X, pd.DataFrame):
             raise ValueError("X harus berupa Pandas DataFrame")
-        
+
         if self.scaler is not None:
             X_scaled = pd.DataFrame(
                 self.scaler.transform(X),
@@ -114,16 +119,16 @@ class OptimizedSpinalPipeline(BaseEstimator, ClassifierMixin):
             )
         else:
             X_scaled = X.copy()
-        
+
         probabilities = {}
-        for label in self.target_names:
+        for label in self.target_names_:
             model_info = self.label_models[label]
             model = model_info['model']
-            
+
             try:
                 if 'SpinalSpecialistModel' in model.__class__.__name__:
                     proba_full = model.predict_proba(X_scaled)
-                    label_idx = self.target_names.index(label)
+                    label_idx = self.target_names_.index(label)
                     probabilities[label] = proba_full[label_idx][:, 1]
                 else:
                     required_features = self.feature_map[label]
@@ -132,12 +137,12 @@ class OptimizedSpinalPipeline(BaseEstimator, ClassifierMixin):
                     probabilities[label] = proba[:, 1]
             except AttributeError:
                 probabilities[label] = np.zeros(X.shape[0])
-        
+
         return probabilities
 
     def get_model_info(self):
         info = {}
-        for label in self.target_names:
+        for label in self.target_names_:
             model_info = self.label_models[label]
             info[label] = {
                 'model_name': model_info.get('model_name', str(model_info['model'].__class__.__name__)),
